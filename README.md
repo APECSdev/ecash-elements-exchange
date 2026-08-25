@@ -1,4 +1,8 @@
-# ecash-elements-exchange
+<p align="center">
+  <img src="docs/og-banner.png" alt="eCash Elements+ Exchange" width="100%">
+</p>
+
+# eCash Elements+ Exchange
 
 On-chain exchange contracts for the **Liquid (Elements)** sidechain, written in Blockstream's **Simplicity** smart contract language ([SimplicityHL](https://github.com/BlockstreamResearch/SimplicityHL)).
 
