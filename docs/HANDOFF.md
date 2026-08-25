@@ -1,8 +1,8 @@
-# Project Handoff: Simplicity Order Book on Elements/Liquid
+# Project Handoff: ecash-elements-exchange — Simplicity Exchange on Elements/Liquid
 
 ## Objective
 
-Build an on-chain order book for asset trading on the Liquid (Elements) sidechain using Blockstream's Simplicity smart contract language. The system should support trustless, peer-to-peer atomic settlement of trades between Liquid assets with formal verification of contract behavior.
+Build on-chain exchange contracts for asset trading on the Liquid (Elements) sidechain using Blockstream's Simplicity smart contract language. The system supports trustless, peer-to-peer atomic settlement of trades between Liquid assets with formal verification of contract behavior. The repo comprises two contract designs — an off-chain-matched order book with on-chain atomic settlement, and an on-chain constant-product AMM (CPMM micro-pool) — sharing common covenant helpers (`simf/lib.simf`).
 
 ## Background
 
