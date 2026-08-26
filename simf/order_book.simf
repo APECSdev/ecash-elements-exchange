@@ -1,0 +1,100 @@
+/*
+ * order_book — atomic swap settlement contract
+ *
+ * Off-chain order matching + on-chain atomic swap settlement. Each order is a
+ * standalone UTXO carrying its own contract instance; maker/taker asset IDs,
+ * amounts, the maker's receiving script-hash, the maker's refund pubkey, and
+ * the expiry lock-time are baked at compile time via `param::` (one compilation
+ * per order). The taker's destination is free (authorized implicitly by the
+ * taker constructing and broadcasting the transaction), per docs/RESEARCH.md
+ * finding #4 (Pattern A, open order book — no TAKER_PUBKEY baked).
+ *
+ * Modeled on simplicity-contracts/.../option_offer.simf: covenant-enforced
+ * output introspection over unblinded (explicit) Elements outputs.
+ *
+ * Spend paths:
+ *  1. Take (settlement): no signature — anyone may fill as long as outputs
+ *     deliver exactly TAKER_AMOUNT of TAKER_ASSET to the maker's baked
+ *     script-hash, and exactly MAKER_AMOUNT of MAKER_ASSET to a taker-chosen
+ *     destination.
+ *  2. Cancel (refund): after EXPIRY, the maker reclaims MAKER_AMOUNT of
+ *     MAKER_ASSET to a maker-chosen destination, authorized by the maker's
+ *     BIP-340 signature (free-destination pattern, as in option_offer.simf
+ *     withdraw/expiry paths).
+ *
+ * Layout:
+ *
+ *   Take:
+ *     Input[0]:  MAKER_AMOUNT of MAKER_ASSET  (the order UTXO)
+ *     Output[0]: TAKER_AMOUNT of TAKER_ASSET  → MAKER_SCRIPT_HASH (maker paid)
+ *     Output[1]: MAKER_AMOUNT of MAKER_ASSET  → taker (free destination)
+ *
+ *   Cancel:
+ *     Input[0]:  MAKER_AMOUNT of MAKER_ASSET  (the order UTXO)
+ *     Output[0]: MAKER_AMOUNT of MAKER_ASSET  → maker (free destination)
+ */
+
+use crate::lib::{
+    check_sig, ensure_output_asset_with_amount_eq, ensure_output_script_hash_eq,
+    get_input_explicit_asset_amount,
+};
+
+/*
+ * Take Path
+ *
+ * No time restriction — the order is fillable by anyone until cancelled.
+ * No signature — settlement is purely covenant-enforced.
+ *
+ * Constraints:
+ *   Input[0]  asset == MAKER_ASSET_ID,  amount == MAKER_AMOUNT
+ *   Output[0] asset == TAKER_ASSET_ID,  amount == TAKER_AMOUNT,
+ *             script_hash == MAKER_SCRIPT_HASH
+ *   Output[1] asset == MAKER_ASSET_ID,  amount == MAKER_AMOUNT (free destination)
+ */
+fn take_path() {
+    assert!(jet::eq_32(jet::current_index(), 0));
+
+    // Verify the order UTXO (single input) carries exactly the offered asset/amount.
+    let (input_asset, input_amount): (u256, u64) = get_input_explicit_asset_amount(0);
+    assert!(jet::eq_256(input_asset, param::MAKER_ASSET_ID));
+    assert!(jet::eq_64(input_amount, param::MAKER_AMOUNT));
+
+    // Maker is paid: TAKER_AMOUNT of TAKER_ASSET to the baked maker script-hash.
+    ensure_output_asset_with_amount_eq(0, param::TAKER_ASSET_ID, param::TAKER_AMOUNT);
+    ensure_output_script_hash_eq(0, param::MAKER_SCRIPT_HASH);
+
+    // Taker receives: MAKER_AMOUNT of MAKER_ASSET to a free (taker-chosen) destination.
+    ensure_output_asset_with_amount_eq(1, param::MAKER_ASSET_ID, param::MAKER_AMOUNT);
+}
+
+/*
+ * Cancel Path
+ *
+ * Only allowed at/after EXPIRY (CLTV, as in option_offer.simf expiry_path).
+ * Requires the maker's BIP-340 signature. Full reclaim — no change.
+ *
+ * Constraints:
+ *   Input[0]  asset == MAKER_ASSET_ID,  amount == MAKER_AMOUNT
+ *   Output[0] asset == MAKER_ASSET_ID,  amount == MAKER_AMOUNT (free destination)
+ */
+fn cancel_path(sig: Signature) {
+    jet::check_lock_time(param::EXPIRY);
+
+    assert!(jet::eq_32(jet::current_index(), 0));
+
+    let (input_asset, input_amount): (u256, u64) = get_input_explicit_asset_amount(0);
+    assert!(jet::eq_256(input_asset, param::MAKER_ASSET_ID));
+    assert!(jet::eq_64(input_amount, param::MAKER_AMOUNT));
+
+    check_sig(param::MAKER_PUBKEY, sig);
+
+    // Maker reclaims the full offered amount to a free (maker-chosen) destination.
+    ensure_output_asset_with_amount_eq(0, param::MAKER_ASSET_ID, param::MAKER_AMOUNT);
+}
+
+fn main() {
+    match witness::PATH {
+        Left(params: ()) => take_path(),
+        Right(params: ()) => cancel_path(witness::MAKER_SIGNATURE),
+    }
+}

@@ -1,0 +1,61 @@
+/*
+ * lib — shared covenant helpers
+ *
+ * Common asset/amount/script-hash introspection and signature-check helpers
+ * used by both the order_book and amm contracts. Ported verbatim from the
+ * covenant helpers in simplicity-contracts/.../option_offer.simf, exposed as
+ * `pub fn` so each contract imports only what it needs via `use crate::lib::...`.
+ *
+ * This file has no `main()` and is therefore NOT compiled as a standalone
+ * contract artifact by `simplex build`; it is consumed only as an import
+ * dependency (same pattern as smplx/examples/basic/simf/bip340.simf).
+ *
+ * All helpers assume unblinded (explicit) outputs/inputs, as documented in
+ * docs/RESEARCH.md (v1 scope).
+ */
+
+pub fn get_input_script_hash(index: u32) -> u256 {
+    unwrap(jet::input_script_hash(index))
+}
+
+pub fn get_output_explicit_asset_amount(index: u32) -> (u256, u64) {
+    let pair: (Asset1, Amount1) = unwrap(jet::output_amount(index));
+    let (asset, amount): (Asset1, Amount1) = pair;
+    let asset_bits: u256 = unwrap_right::<(u1, u256)>(asset);
+    let amount: u64 = unwrap_right::<(u1, u256)>(amount);
+    (asset_bits, amount)
+}
+
+pub fn get_input_explicit_asset_amount(index: u32) -> (u256, u64) {
+    let pair: (Asset1, Amount1) = unwrap(jet::input_amount(index));
+    let (asset, amount): (Asset1, Amount1) = pair;
+    let asset_bits: u256 = unwrap_right::<(u1, u256)>(asset);
+    let amount: u64 = unwrap_right::<(u1, u256)>(amount);
+    (asset_bits, amount)
+}
+
+pub fn ensure_zero_bit(bit: bool) {
+    assert!(jet::eq_1(<bool>::into(bit), 0));
+}
+
+pub fn ensure_output_asset_with_amount_eq(index: u32, expected_bits: u256, expected_amount: u64) {
+    let (asset, amount): (u256, u64) = get_output_explicit_asset_amount(index);
+    assert!(jet::eq_256(asset, expected_bits));
+    assert!(jet::eq_64(amount, expected_amount));
+}
+
+pub fn ensure_output_script_hash_eq(index: u32, expected: u256) {
+    assert!(jet::eq_256(unwrap(jet::output_script_hash(index)), expected));
+}
+
+pub fn ensure_input_and_output_script_hash_eq(index: u32) {
+    assert!(jet::eq_256(unwrap(jet::input_script_hash(index)), unwrap(jet::output_script_hash(index))));
+}
+
+/// Verify a BIP-340 signature over `jet::sig_all_hash()` against the given
+/// public key. Generic form of option_offer.simf's `check_user_signature`,
+/// so each contract can pass its own baked pubkey.
+pub fn check_sig(pk: Pubkey, sig: Signature) {
+    let msg: u256 = jet::sig_all_hash();
+    jet::bip_0340_verify((pk, msg), sig);
+}
